@@ -3,11 +3,11 @@
 
 
 // C/C++ standard headers
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <iostream>
 #include <memory>
-
 
 // Other external headers
 // Windows headers
@@ -53,16 +53,9 @@
 // implementations
 //
 
-template<class T> inline
-std::unique_ptr<T> make_unique_ptr(
-    __in T* p)
-{
-    return std::unique_ptr<T>(p);
-}
-
 
 template<class T, class D> inline
-std::unique_ptr<T, D> make_unique_ptr(
+std::unique_ptr<T, D> make_unique_ex(
     __in T* p,
     __in D d = D())
 {

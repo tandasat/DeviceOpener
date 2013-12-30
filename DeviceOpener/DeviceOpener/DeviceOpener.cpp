@@ -61,7 +61,7 @@ std::string GetErrorMessage(
     {
         return "";
     }
-    auto scoped = make_unique_ptr(message, &::LocalFree);
+    auto scoped = make_unique_ex(message, &::LocalFree);
 
     const auto length = ::strlen(message);
     if (!length)
@@ -79,17 +79,18 @@ std::string GetErrorMessage(
 
 enum DesiredAccess
 {
+    DesiredAccessInvalid,
     DesiredAccessRead,
     DesiredAccessWrite,
-    DesiredAccessReadWrite
+    DesiredAccessReadWrite,
 };
 
 
 HANDLE OpenDevice(
-    __in const std::wstring& DeviceName,
+    __in const std::string& DeviceName,
     __in DesiredAccess Access)
 {
-    const auto fullName = L"\\\\.\\" + DeviceName;
+    const auto fullName = "\\\\.\\" + DeviceName;
 
     DWORD access = 0;
     switch (Access)
@@ -107,7 +108,7 @@ HANDLE OpenDevice(
         throw std::runtime_error("Invalid Parameter");
     }
 
-    return ::CreateFileW(
+    return ::CreateFileA(
         fullName.c_str(),
         access,
         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
@@ -118,36 +119,114 @@ HANDLE OpenDevice(
 }
 
 
+DesiredAccess ConvertToDesiredAccess(
+    const std::string& DesiredAccess)
+{
+    if (DesiredAccess == "r")
+    {
+        return DesiredAccessRead;
+    }
+    else if (DesiredAccess == "w")
+    {
+        return DesiredAccessWrite;
+    }
+    else if (DesiredAccess == "rw")
+    {
+        return DesiredAccessReadWrite;
+    }
+    else
+    {
+        return DesiredAccessInvalid;
+    }
+}
+
+
+void IoControlShell(
+    const std::string& DeviceName,
+    HANDLE DeviceHandle)
+{
+    std::cout
+        << "Type a device IO control code in hex or 'exit' to end the shell.\n"
+        << "e.g. "
+        << DeviceName
+        << "> 5360e0c8" << std::endl;
+    for (;;)
+    {
+        std::cout << DeviceName << "> ";
+        std::string input;
+        std::cin >> input;
+        if (input == "exit")
+        {
+            return;
+        }
+        const auto ioCtlCode = std::stoul(input, nullptr, 16);
+
+        std::vector<std::uint8_t> buffer(0x1000, 0x41);
+        DWORD returned = 0;
+        const auto succeeded = ::DeviceIoControl(
+            DeviceHandle, ioCtlCode,
+            buffer.data(), buffer.size(),
+            buffer.data(), buffer.size(),
+            &returned, nullptr);
+        std::cout
+            << succeeded
+            << " : "
+            << GetErrorMessage(::GetLastError()) << std::endl;
+    }
+}
+
+
+__declspec(noreturn)
+void AppMain()
+{
+    std::cout
+        << "Type a decive name without '\\\\.\\' and a code of desired access.\n"
+        << " r = Read, w = Write, rw = ReadWrite\n"
+        << "e.g.> MyDriver"
+        << "e.g.> w" << std::endl;
+    for (;;)
+    {
+        std::cout << "> ";
+        std::string deviceName;
+        std::cin >> deviceName;
+
+        std::cout << "> ";
+        std::string desiredAccessStr;
+        std::cin >> desiredAccessStr;
+
+        const auto desiredAccess = ConvertToDesiredAccess(desiredAccessStr);
+        if (desiredAccess == DesiredAccessInvalid)
+        {
+            std::cout << "Invalid access code" << std::endl;
+            continue;
+        }
+
+        auto handle = make_unique_ex(OpenDevice(deviceName, desiredAccess),
+            &::CloseHandle);
+        std::cout << GetErrorMessage(::GetLastError()) << std::endl;
+        std::cout << std::hex << handle.get()
+            << " = CreateFile()\n" << std::endl;
+        if (handle.get() != INVALID_HANDLE_VALUE)
+        {
+            IoControlShell(deviceName, handle.get());
+        }
+    }
+}
+
+
 } // End of namespace {unnamed}
 
 
 int _tmain()
 {
-    std::wcout << L"Type a decive name without '\\\\.\\'" << std::endl;
-    std::wcout << L"e.g.> MyDriver" << std::endl;
-    for (;;)
+    try
     {
-        std::wcout << L"> ";
-        std::wstring name;
-        std::wcin >> name;
-
-        auto handle = make_unique_ptr(OpenDevice(name, DesiredAccessRead),
-            &::CloseHandle);
-        std::cout << GetErrorMessage(::GetLastError()) << std::endl;
-        std::cout << std::hex << handle.get()
-            << " = CreateFileW(GENERIC_READ)\n" << std::endl;
-
-        handle = make_unique_ptr(OpenDevice(name, DesiredAccessWrite),
-            &::CloseHandle);
-        std::cout << GetErrorMessage(::GetLastError()) << std::endl;
-        std::cout << std::hex << handle.get()
-            << " = CreateFileW(GENERIC_WRITE)\n" << std::endl;
-
-        handle = make_unique_ptr(OpenDevice(name, DesiredAccessReadWrite),
-            &::CloseHandle);
-        std::cout << GetErrorMessage(::GetLastError()) << std::endl;
-        std::cout << std::hex << handle.get()
-            << " = CreateFileW(GENERIC_READ | GENERIC_WRITE)\n" << std::endl;
+        AppMain();
     }
+    catch (std::exception& e)
+    {
+        std::cout << e.what() << std::endl;
+    }
+    return EXIT_FAILURE;
 }
 
