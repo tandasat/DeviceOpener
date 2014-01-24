@@ -181,8 +181,10 @@ void AppMain()
 {
     std::cout
         << "Type a decive name without '\\\\.\\' and a code of desired access.\n"
-        << " r = Read, w = Write, rw = ReadWrite\n"
-        << "e.g.> MyDriver"
+        << " r  = Read\n"
+        << " w  = Write\n"
+        << " rw = ReadWrite\n"
+        << "e.g.> MyDriver\n"
         << "e.g.> w" << std::endl;
     for (;;)
     {
@@ -203,7 +205,8 @@ void AppMain()
 
         auto handle = make_unique_ex(OpenDevice(deviceName, desiredAccess),
             &::CloseHandle);
-        std::cout << GetErrorMessage(::GetLastError()) << std::endl;
+        const auto error = ::GetLastError();
+        std::cout << error << " : " << GetErrorMessage(error) << std::endl;
         std::cout << std::hex << handle.get()
             << " = CreateFile()\n" << std::endl;
         if (handle.get() != INVALID_HANDLE_VALUE)
